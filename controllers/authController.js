@@ -19,7 +19,7 @@ const createAuditLog = async (userId, action) => {
     }
 };
 
-const register = async (req, res) => {
+const signup = async (req, res) => {
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
         return res.status(400).json({ success: false, message: "Missing details" });
@@ -198,7 +198,7 @@ const verifiyEmail = async (req, res) => {
 };
 
 module.exports = {
-    register,
+    signup,
     login,
     logout,
     sendVerifyOtp,
