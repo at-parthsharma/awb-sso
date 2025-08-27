@@ -17,7 +17,7 @@ app.use(cookieParser());
 app.use(cors({credentials: true}));
 // api endpoints
 
-app.use("/api/auth", authRouter)
+app.use("/api/auth", authRouter) // Mounts the auth router at /api/auth
 
 app.get("/", (req, res) => {
     console.log("server started");

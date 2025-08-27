@@ -6,15 +6,15 @@ const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true, trim: true },
     verifyOtp: { type: String, default: "" },
-    verifyOtpExpiredAt: { type: Number, default: 0 },
-    isAccountVerified: { type: Boolean, default: false }
+    verifyOtpExpiredAt: { type: Number, default: 0 },  // Timestamp for OTP expiry (consider using Date type)
+    isAccountVerified: { type: Boolean, default: false } // Flag to check if user has verified their account
 });
 
 const auditLogSchema = new mongoose.Schema({
     
     userId: {
         type: Schema.Types.ObjectId,
-        ref: 'user',
+        ref: 'user', // References the user model
         required: true
     },
     action: {

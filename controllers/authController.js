@@ -8,11 +8,14 @@ const { userModel, auditLogModel } = require("../models/userModels.js");
 
 const createAuditLog = async (userId, action) => {
     try {
-        // ** FIX: Use the 'userId' parameter that was passed into the function **
+         // Create a new audit log document with user ID and action
         const newLog = new auditLogModel({
             userId: userId,
             action: action,
         });
+
+        // Save the log to the database
+
         await newLog.save();
     } catch (error) {
         console.error(`Failed to create audit log for action [${action}] and user [${userId}]:`, error);
@@ -20,18 +23,22 @@ const createAuditLog = async (userId, action) => {
 };
 
 const signup = async (req, res) => {
+    
+    // Basic input validation
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
         return res.status(400).json({ success: false, message: "Missing details" });
     }
 
     try {
+                // Check if user already exists
         const exisitingUser = await userModel.findOne({ email });
         if (exisitingUser) {
             return res.status(409).json({ success: false, message: "User already exists." });
         }
+        // Hash the password securely
         const hashedPassword = await bcrypt.hash(password, 10);
-
+        // Create and save new user
         const user = new userModel({
             name,
             email,
@@ -41,7 +48,7 @@ const signup = async (req, res) => {
         await user.save();
 
         await createAuditLog(user._id, 'SIGNUP');
-
+        // Generate JWT token
         const token = jwt.sign({ id: user._id },
             process.env.JWT_SECRET, { expiresIn: "7d" }
         );
@@ -53,6 +60,7 @@ const signup = async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
 
+                // Send welcome email
         const mailOptions = {
             from: process.env.SENDER_EMAIL,
             to: email,
@@ -70,17 +78,19 @@ const signup = async (req, res) => {
 };
 
 const login = async (req, res) => {
+        // Validate input
     const { email, password } = req.body;
     if (!email || !password) {
         return res.status(400).json({ success: false, message: "Email and password are required." })
     }
 
     try {
+                // Find user by email
         const user = await userModel.findOne({ email });
         if (!user) {
             return res.status(404).json({ success: false, message: "User doesn't exist." })
         }
-
+        // Compare password
         const isMatch = await bcrypt.compare(password, user.password)
         if (!isMatch) {
             // You might not want to log failed attempts, but if you do, this is where it would go.
@@ -91,7 +101,7 @@ const login = async (req, res) => {
         const token = jwt.sign({ id: user._id },
             process.env.JWT_SECRET, { expiresIn: "7d" }
         );
-
+        // Set cookie with token
         res.cookie("token", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
@@ -110,11 +120,12 @@ const login = async (req, res) => {
 const logout = async (req, res) => {
     try {
 
+        // Extract user ID from request (assumes authentication middleware has set req.user)
         const userId = req.user?.id;
         if (userId) {
             await createAuditLog(userId, 'LOGOUT');
         }
-
+        // Clear the authentication cookie
         res.clearCookie('token', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
@@ -130,17 +141,18 @@ const logout = async (req, res) => {
 
 const sendVerifyOtp = async (req, res) => {
     try {
+                // Find user by ID
         const { userId } = req.body;
         const user = await userModel.findById(userId);
 
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
         }
-
+        // Check if account is already verified
         if (user.isAccountVerified) {
             return res.json({ success: false, message: "Account already verified" });
         }
-
+        // Generate 6-digit OTP
         const otp = String(Math.floor(100000 + Math.random() * 900000));
 
         user.verifyOtp = otp;
@@ -149,7 +161,7 @@ const sendVerifyOtp = async (req, res) => {
 
 
         await createAuditLog(user._id, 'OTP_SENT');
-
+        // Email the OTP
         const mailOptions = {
             from: process.env.SENDER_EMAIL,
             to: user.email,
@@ -165,25 +177,30 @@ const sendVerifyOtp = async (req, res) => {
 };
 
 const verifiyEmail = async (req, res) => {
+    
+    // Validate input
     const { userId, otp } = req.body;
     if (!userId || !otp) {
         return res.json({ success: false, message: 'Missing details.' })
     }
 
     try {
+                // Find user by ID
         const user = await userModel.findById(userId);
         if (!user) {
             return res.json({ success: false, message: 'User not found.' })
         }
+                // Validate OTP
         if (user.verifyOtp === '' || user.verifyOtp !== otp) {
             return res.json({ success: false, message: "Invalid OTP" });
         }
+                // Check OTP expiration
         if (user.verifyOtpExpiredAt < Date.now()) {
             return res.json({ success: false, message: "OTP EXPIRED." });
         }
-
+        // Update verification status
         user.isAccountVerified = true;
-        user.verifyOtp = ""; // Clear the OTP after successful verification
+        user.verifyOtp = otp; // Clear the OTP after successful verification
         user.verifyOtpExpiredAt = 0;
         await user.save();
 
