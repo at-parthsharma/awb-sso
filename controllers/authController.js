@@ -1,0 +1,204 @@
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const transporter = require("../config/nodemailer");
+
+const { userModel, auditLogModel } = require("../models/userModels.js");
+
+const createAuditLog = async (userId, action) => {
+    try {
+        // ** FIX: Use the 'userId' parameter that was passed into the function **
+        const newLog = new auditLogModel({
+            userId: userId,
+            action: action,
+        });
+        await newLog.save();
+    } catch (error) {
+        console.error(`Failed to create audit log for action [${action}] and user [${userId}]:`, error);
+    }
+};
+
+const register = async (req, res) => {
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+        return res.status(400).json({ success: false, message: "Missing details" });
+    }
+
+    try {
+        const exisitingUser = await userModel.findOne({ email });
+        if (exisitingUser) {
+            return res.status(409).json({ success: false, message: "User already exists." });
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const user = new userModel({
+            name,
+            email,
+            password: hashedPassword
+        });
+
+        await user.save();
+
+        await createAuditLog(user._id, 'SIGNUP');
+
+        const token = jwt.sign({ id: user._id },
+            process.env.JWT_SECRET, { expiresIn: "7d" }
+        );
+
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        const mailOptions = {
+            from: process.env.SENDER_EMAIL,
+            to: email,
+            subject: "Welcome to the Automatically Website",
+            text: `Welcome to Automatically website your account with Email: ${email} has successfully being created.`
+        }
+        await transporter.sendMail(mailOptions);
+
+        return res.status(201).json({ success: true, message: "User registered successfully." });
+
+    } catch (error) {
+        console.error("Registration Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const login = async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ success: false, message: "Email and password are required." })
+    }
+
+    try {
+        const user = await userModel.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User doesn't exist." })
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password)
+        if (!isMatch) {
+            // You might not want to log failed attempts, but if you do, this is where it would go.
+            return res.status(401).json({ success: false, message: "Invalid credentials." })
+        }
+        await createAuditLog(user._id, 'LOGIN');
+
+        const token = jwt.sign({ id: user._id },
+            process.env.JWT_SECRET, { expiresIn: "7d" }
+        );
+
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        return res.status(200).json({ success: true, message: "Logged in successfully." });
+
+    } catch (error) {
+        console.error("Login Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
+    }
+};
+
+const logout = async (req, res) => {
+    try {
+
+        const userId = req.user?.id;
+        if (userId) {
+            await createAuditLog(userId, 'LOGOUT');
+        }
+
+        res.clearCookie('token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+        });
+
+        return res.status(200).json({ success: true, message: 'Logged Out' });
+    } catch (error) {
+        console.error("Logout Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
+    }
+};
+
+const sendVerifyOtp = async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const user = await userModel.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (user.isAccountVerified) {
+            return res.json({ success: false, message: "Account already verified" });
+        }
+
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+        user.verifyOtp = otp;
+        user.verifyOtpExpiredAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+        await user.save();
+
+
+        await createAuditLog(user._id, 'OTP_SENT');
+
+        const mailOptions = {
+            from: process.env.SENDER_EMAIL,
+            to: user.email,
+            subject: "Account verification Otp",
+            text: `Your OTP generated is: ${otp}, verify your account using this.`
+        }
+        await transporter.sendMail(mailOptions);
+
+        res.json({ success: true, message: "Verification otp sent on email." });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+const verifiyEmail = async (req, res) => {
+    const { userId, otp } = req.body;
+    if (!userId || !otp) {
+        return res.json({ success: false, message: 'Missing details.' })
+    }
+
+    try {
+        const user = await userModel.findById(userId);
+        if (!user) {
+            return res.json({ success: false, message: 'User not found.' })
+        }
+        if (user.verifyOtp === '' || user.verifyOtp !== otp) {
+            return res.json({ success: false, message: "Invalid OTP" });
+        }
+        if (user.verifyOtpExpiredAt < Date.now()) {
+            return res.json({ success: false, message: "OTP EXPIRED." });
+        }
+
+        user.isAccountVerified = true;
+        user.verifyOtp = ""; // Clear the OTP after successful verification
+        user.verifyOtpExpiredAt = 0;
+        await user.save();
+
+        await createAuditLog(user._id, 'VERIFY_EMAIL');
+
+        // FIX: Removed the second user.save() which was after the return
+        return res.json({ success: true, message: "Email Verified." });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+module.exports = {
+    register,
+    login,
+    logout,
+    sendVerifyOtp,
+    verifiyEmail
+};
