@@ -30,23 +30,23 @@ It provides endpoints for user registration, login, logout, email verification w
 project/
 config/
 mongodb.js # MongoDB connection
- nodemailer.js # Nodemailer config
+nodemailer.js # Nodemailer config
 
 controllers/
 authController.js # Auth logic (register, login, OTP, etc.)
 
 middleware/
- userAuth.js # JWT auth middleware
+userAuth.js # JWT auth middleware
 
- models/
- userModels.js # User & AuditLog schema/models
+models/
+userModels.js # User & AuditLog schema/models
 
 routes/
 authRoutes.js # Auth API routes
 
 .env # Environment variables
- package.json # Dependencies & scripts
-server.js # App entry point
+package.json # Dependencies & scripts
+server.js # App entry pointt
 
 
 
