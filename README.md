@@ -11,18 +11,18 @@ It provides endpoints for user registration, login, logout, email verification w
 - Email verification using OTP
 - Nodemailer email integration (SMTP)
 - Audit logging of key actions: `SIGNUP`, `LOGIN`, `LOGOUT`, `VERIFY_EMAIL`, `OTP_SENT`
-- MongoDB for data persistence
+- MongoDB for data 
 
 ---
 
 ## Tech Stack
 - Backend Framework: Express.js
 - Database: MongoDB with Mongoose ODM
-- Authentication: JWT (JSON Web Token)
+- Authentication: JWT 
 - Password Hashing: bcryptjs
 - Email Service: Nodemailer with Brevo SMTP
 - Environment Management: dotenv
-- Server Utilities: cookie-parser, cors, nodemon
+- Server Utilities: cookie-parser,nodemon
 
 ---
 
